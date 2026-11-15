@@ -41,3 +41,39 @@ class PlayersService:
         async with handle_integrity_error("player"):
             obj = await self.repository.create(data.model_dump())
         return PlayersRead.model_validate(obj)
+
+    async def get_many_by_field(self, field_values: List[str], field_name: str) -> List[PlayersRead]:
+        """Return player matching values on a named column.
+        
+        Args:
+            field_values: Values for the ``IN`` filter.
+            field_name: Column/attribute name (e.g. ``name``, ``short_name``)
+        Returns:
+            List of player DTOs.
+        Raises:
+            NotFoundError: If the query returns no rows.
+        """
+        objs = await self.repository.get_many_by_field(field_values, field_name)
+        if not objs:
+            raise NotFoundError("Players not found.")
+        return [PlayersRead.model_validate(obj) for obj in objs]
+
+    async def list(self, skip: int = 0, limit: int = 100) -> PageResponse[PlayersRead]:
+        """Return a paginated list of player.
+        
+        Args:
+            skip: Offset.
+            limit: Page size.
+
+        Returns:
+            Paginated envelope of player DTOs.
+        """
+        objs, total = await self.repository.list(skip, limit)
+        return PageResponse(
+            items=[PlayersRead.model_validate(obj) for obj in objs],
+            total=total,
+            skip=skip,
+            limit=limit,
+        )
+
+    

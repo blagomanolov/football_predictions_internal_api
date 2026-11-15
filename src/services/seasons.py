@@ -85,7 +85,7 @@ class SeasonsService:
         }
 
     async def get(self, id: int) -> SeasonsRead:
-        """Return one competition by id.
+        """Return one season by id.
         
         Args:
             id: Season primary key.
