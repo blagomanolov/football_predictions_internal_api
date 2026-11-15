@@ -1,0 +1,11 @@
+# Environment files — NEVER commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+env/
+.venv/
