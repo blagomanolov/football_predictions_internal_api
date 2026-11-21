@@ -7,8 +7,6 @@ from typing import Dict, Optional
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-# HSTS is intentionally NOT set here: it must be sent by the TLS-terminating
-# reverse proxy / load balancer, which is the component that knows about HTTPS.
 DEFAULT_HEADERS: Dict[str, str] = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",

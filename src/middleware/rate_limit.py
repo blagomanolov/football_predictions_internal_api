@@ -15,7 +15,6 @@ log = structlog.get_logger(__name__)
 
 _settings = get_settings()
 
-# memory:// = counters per worker process. Use redis://... to share across workers/pods.
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=[_settings.rate_limit_default],

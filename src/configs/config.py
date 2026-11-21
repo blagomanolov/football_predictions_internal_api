@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     version: str = Field(default="1.0.0", alias="VERSION")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     debug: bool = Field(default=False, alias="DEBUG")
-    api_key: SecretStr = Field(..., alias="API_KEY")
+    api_key_name: str = Field(default="X-API-Key", alias="API_KEY_NAME")
+    api_key: str = Field(default="api-key", alias="API_KEY")
     allowed_origins: list[str] = Field(default=["http://localhost:3000"], alias="ALLOWED_ORIGINS")
     trusted_hosts: list[str] = Field(default=["*"], alias="TRUSTED_HOSTS")
 
@@ -53,6 +54,14 @@ class Settings(BaseSettings):
     db_pool_timeout: int = Field(default=30, alias="DB_POOL_TIMEOUT")
     db_connect_timeout: int = Field(default=10, alias="DB_CONNECT_TIMEOUT")
 
+    prv_db_host: str = Field(..., alias="PRV_DB_HOST")
+    prv_db_port: int = Field(default=3306, alias="PRV_DB_PORT")
+    prv_db_user: str = Field(..., alias="PRV_DB_USER")
+    prv_db_password: str = Field(..., alias="PRV_DB_PASSWORD")
+    prv_db_name: str = Field(..., alias="PRV_DB_NAME")
+
+    JWT_SECRET: SecretStr = Field(..., alias="JWT_SECRET")
+
     vault: Optional[Dict[str, Any]] = None
 
     @property
@@ -65,3 +74,5 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the process-wide cached ``Settings`` instance."""
     return Settings()
+
+settings = Settings()

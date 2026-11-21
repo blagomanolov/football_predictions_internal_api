@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 import json
@@ -16,12 +17,13 @@ from slowapi.middleware import SlowAPIASGIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from api.v1 import api_v1_router
+from api.v1 import api_router
 from configs.config import Settings, get_settings
 from configs.constants import AppEnv
 from configs.logging_config import setup_logging
 from core.exception_handlers import register_exception_handlers
 from database.database import Database
+from database_priv.database import PrivilegeDatabase
 from middleware.middleware import RequestLoggingMiddleware
 from middleware.rate_limit import limiter, rate_limit_exceeded_handler
 from middleware.security_headers import SecurityHeadersMiddleware
@@ -49,9 +51,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     database: Database = Database(**settings.model_dump())
     app.state.database = database
-    yield
-    log.info("app_shutting_down")
-    await database.engine.dispose()
+
+    privilege_db: PrivilegeDatabase = PrivilegeDatabase()
+    app.state.privilege_db = privilege_db
+
+    try:
+        yield
+    finally:
+        log.info("app_shutting_down")
+        await asyncio.gather(
+            database.engine.dispose(),
+            privilege_db.engine.dispose(),
+        )
 
 
 swagger_params = {"persistAuthorization": True}
@@ -60,7 +71,7 @@ if settings.config_env == AppEnv.local:
         "APIKeyHeader": {
             "name": "APIKeyHeader",
             "schema": {"type": "apiKey", "in": "header", "name": "X-API-Key"},
-            "value": settings.api_key.get_secret_value(),
+            "value": settings.api_key,
         }
     }
 
@@ -124,7 +135,7 @@ async def health(request: Request) -> JSONResponse:
     return await _readiness_response(request)
 
 
-app.include_router(api_v1_router)
+app.include_router(api_router)
 
 if __name__ == "__main__":
     log.info("launching_dev_server", app_name=settings.app_name, url="http://127.0.0.1:8000")

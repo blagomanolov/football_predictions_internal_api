@@ -62,6 +62,7 @@ class Database:
         self.log.info(
             "db_engine_initialized",
             host=self.connection_params.get("host"),
+            database=self.connection_params.get("database"),
             pool_size=self.connection_params.get("db_pool_size", 10),
             max_overflow=self.connection_params.get("db_max_overflow", 20),
         )

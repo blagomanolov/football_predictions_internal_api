@@ -27,8 +27,6 @@ async def require_api_key(api_key: str | None = Security(API_KEY_HEADER)) -> Non
             detail="Missing X-API-Key header",
         )
     expected = get_settings().api_key.get_secret_value()
-    # Compare bytes: compare_digest() raises TypeError for non-ASCII *str* input,
-    # which a client could use to trigger a 500.
     if not secrets.compare_digest(api_key.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

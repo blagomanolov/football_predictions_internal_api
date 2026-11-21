@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from middleware.rate_limit import limiter
+from core.auth import require_permissions
 from database.dependencies import get_db_session
 from repositories.countries import CountriesRepository
 from schemas.countries import (
@@ -39,7 +41,8 @@ def get_service(
         "/", 
         response_model=CountriesRead,
         summary="Create country record.",
-        description="Create country record."
+        description="Create country record.",
+        dependencies=[Depends(require_permissions(["data:write"]))]
 )
 async def create(
     data: CountriesCreate, 
@@ -54,8 +57,10 @@ async def create(
     """
     return await service.create(data)
 
-@router.get("/", response_model=PageResponse[CountriesRead])
+@router.get("/", response_model=PageResponse[CountriesRead], dependencies=[Depends(require_permissions(["data:read"]))])
+@limiter.limit("10/minute")
 async def list_all(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1_000),
     service: CountriesService = Depends(get_service),
@@ -78,8 +83,11 @@ async def list_all(
     response_model=List[CountriesRead],
     summary="Get countries by names.",
     description="Retrieve country records matching full country names (exact match).",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
+@limiter.limit("10/minute")
 async def get_many_by_name(
+    request: Request,
     names: List[str] = Query(
         default=["England"],
         description="One or more country names (e.g. England, Spain, Germany)",
@@ -103,8 +111,11 @@ async def get_many_by_name(
     response_model=List[CountriesRead],
     summary="Get countries by code_alpha2.",
     description="Retrieve country records matching code_alpha2 (exact match).",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
+@limiter.limit("10/minute")
 async def get_many_by_code2(
+    request: Request,
     codes: List[str] = Query(
         default=["EN"],
         description="One or more code_alpha2 values (e.g. EN, ES, DE)",
@@ -128,8 +139,11 @@ async def get_many_by_code2(
     response_model=List[CountriesRead],
     summary="Get countries by code_alpha3.",
     description="Retrieve country records matching code_alpha3 (exact match).",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
+@limiter.limit("10/minute")
 async def get_many_by_code3(
+    request: Request,
     codes: List[str] = Query(
         default=["ENG"],
         description="One or more code_alpha3 values (e.g. ENG, ESP, DEU)",
@@ -153,8 +167,11 @@ async def get_many_by_code3(
     response_model=List[CountriesRead],
     summary="Get countries by confederation.",
     description="Retrieve country records matching confederation (exact match).",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
+@limiter.limit("10/minute")
 async def get_many_by_confederation(
+    request: Request,
     confederations: List[str] = Query(
         default=["UEFA"],
         description="One or more confederations (e.g. UEFA, CAF, CONMEBOL)",
@@ -178,8 +195,11 @@ async def get_many_by_confederation(
     response_model=List[CountriesRead],
     summary="Get countries by ids.",
     description="Retrieve country records matching ids.",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
+@limiter.limit("10/minute")
 async def get_many(
+    request: Request,
     ids: List[int] = Query(description="One or more country ids."),
     service: CountriesService = Depends(get_service),
 ) -> List[CountriesRead]:
@@ -200,8 +220,11 @@ async def get_many(
     response_model=CountriesRead,
     summary="Get country by id.",
     description="Retrieve country record matching id.",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
+@limiter.limit("10/minute")
 async def get_one(
+    request: Request,
     country_id: int,
     service: CountriesService = Depends(get_service),
 ) -> CountriesRead:
@@ -225,9 +248,12 @@ async def get_one(
         "filter criteria across multiple model fields. Support multiple "
         "comparison operations, configurable sorting (asc or desc), "
         "and pagination using skip and limit parameters."
-    )
+    ),
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
+@limiter.limit("10/minute")
 async def search(
+    request: Request,
     filters: List[FilterItem] = Body(...),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1_000),
@@ -256,7 +282,8 @@ async def search(
         "Update an existing country identified by its unique ID. "
         "Accepts the fields to be updated and applies the changes to the "
         "corresponding country record."
-    )
+    ),
+    dependencies=[Depends(require_permissions(["data:write"]))]
 )
 async def update(
     country_id: int,
@@ -281,7 +308,8 @@ async def update(
     description = (
         "Delete an existing country identified by its unique ID. "
         "Permanently removes the country record from the database."
-    )
+    ),
+    dependencies=[Depends(require_permissions(["data:write"]))]
 )
 async def delete(
     country_id: int,

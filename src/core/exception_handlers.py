@@ -19,7 +19,6 @@ from schemas.errors import ErrorResponse
 
 log = structlog.get_logger(__name__)
 
-# Database connectivity problems -> 503 (retryable), never 500 with SQL details.
 _DB_UNAVAILABLE_ERRORS = (OperationalError, InterfaceError, PoolTimeoutError)
 
 
@@ -105,7 +104,6 @@ def register_exception_handlers(app: FastAPI) -> None:
                 request,
                 "validation_error",
                 "Request validation failed",
-                # errors() may contain non-JSON types (exceptions in ``ctx``)
                 jsonable_encoder(exc.errors()),
             ),
         )
