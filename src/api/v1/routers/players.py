@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from middleware.rate_limit import limiter
+from core.auth import require_permissions
 from database.dependencies import get_db_session
 from repositories.players import PlayersRepository
 from schemas.players import (
@@ -41,7 +42,8 @@ def get_service(
         "/", 
         response_model=PlayersRead,
         summary="Create player record.",
-        description="Create player record."
+        description="Create player record.",
+        dependencies=[Depends(require_permissions(['data:write']))]
 )
 async def create(
     data: PlayersCreate, 
@@ -56,7 +58,7 @@ async def create(
     """
     return await service.create(data)
 
-@router.get("/", response_model=PageResponse[PlayersRead])
+@router.get("/", response_model=PageResponse[PlayersRead], dependencies=[Depends(require_permissions(['data:read']))])
 @limiter.limit("10/minute")
 async def list_all(
     request: Request,
@@ -79,7 +81,8 @@ async def list_all(
     "/by-first-name",
     response_model=List[PlayersRead],
     summary="Get player by first name.",
-    description="Retrieve player records matching first_name (exact match)."
+    description="Retrieve player records matching first_name (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def get_many_by_first_name(

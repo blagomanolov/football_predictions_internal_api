@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from middleware.rate_limit import limiter
+from core.auth import require_permissions
 from database.dependencies import get_db_session
 from repositories.teams import TeamsRepository
 from schemas.teams import (
@@ -40,11 +41,10 @@ def get_service(
     "/",
     response_model=TeamsRead,
     summary="Create team record.",
-    description="Create team record."
+    description="Create team record.",
+    dependencies=[Depends(require_permissions(["data:write"]))]
 )
-@limiter.limit("10/minute")
 async def create(
-    request: Request,
     data: TeamsCreate,
     service: TeamsService = Depends(get_service)
 ):
@@ -57,7 +57,7 @@ async def create(
     """
     return await service.create(data)
 
-@router.get("/", response_model=PageResponse[TeamsRead])
+@router.get("/", response_model=PageResponse[TeamsRead], dependencies=[Depends(require_permissions(["data:read"]))])
 @limiter.limit("10/minute")
 async def list_all(
     request: Request,
@@ -81,6 +81,7 @@ async def list_all(
     response_model=List[TeamsRead],
     summary="Get team by name.",
     description="Retrieve teams records matching name (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def get_many_by_name(
@@ -106,6 +107,7 @@ async def get_many_by_name(
     response_model=List[TeamsRead],
     summary="Get team by short name.",
     description="Retrieve teams records matching short name (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def get_many_by_short_name(
@@ -134,7 +136,8 @@ async def get_many_by_short_name(
     description=(
         "Retrieve teams records associated with specified country names, including the country name, "
         "city name, and venue."
-    )
+    ),
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def get_many_by_country(
@@ -163,7 +166,8 @@ async def get_many_by_country(
     description=(
         "Retrieve teams records associated with specified city names, including the country name, "
         "city name, and venue."
-    )
+    ),
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def get_many_by_city(
@@ -189,7 +193,8 @@ async def get_many_by_city(
     "/bulk",
     response_model=List[TeamsRead],
     summary="Get teams by ids.",
-    description="Retrieve teams records matching ids."
+    description="Retrieve teams records matching ids.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def get_many(
@@ -213,6 +218,7 @@ async def get_many(
     response_model=TeamsRead,
     summary="Get team by id.",
     description="Retrieve team record matching id.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def get_one(
@@ -240,7 +246,8 @@ async def get_one(
             "filter critria across multiple model fields. Support multiple"
             "comperison operations, configurable sorting (asc or desc)"
             "and pagination using skip and limit parameters."
-        )
+        ),
+        dependencies=[Depends(require_permissions(['data:read']))]
 )
 @limiter.limit("10/minute")
 async def search(
@@ -274,11 +281,10 @@ async def search(
         "Update an existing team identified by its unique ID. "
         "Accepts the fields to be updated and applies the changes to the "
         "corresponding team records."
-    )
+    ),
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
-@limiter.limit("10/minute")
 async def update(
-    request: Request,
     team_id: int,
     data: TeamsUpdate,
     service: TeamsService = Depends(get_service)
@@ -302,11 +308,10 @@ async def update(
     description = (
             "Delete an existing team identified by its unique ID. "
             "Permanently removes the team record from the database."
-    )
+    ),
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
-@limiter.limit("10/minute")
 async def delete(
-    request: Request,
     team_id: int,
     service: TeamsService = Depends(get_service),
 ) -> DeleteConfirmation:

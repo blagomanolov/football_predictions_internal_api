@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from middleware.rate_limit import limiter
+from core.auth import require_permissions
 from database.dependencies import get_db_session
 from repositories.venues import VenuesRepository
 from schemas.venues import (
@@ -42,6 +44,7 @@ def get_service(
     response_model=VenuesRead,
     summary="Create venues record.",
     description="Create a new venues reference record.",
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
 async def create(
     data: VenuesCreate,
@@ -64,8 +67,11 @@ async def create(
     response_model=PageResponse[VenuesRead],
     summary="List venues.",
     description="Retrieve a paginated list of venues.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit("10/minute")
 async def list_all(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1_000),
     service: VenuesService = Depends(get_service),
@@ -88,8 +94,11 @@ async def list_all(
     response_model=List[VenuesRead],
     summary="Get venues by name.",
     description="Retrieve venue records matching name (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_many_by_name(
+    request: Request,
     names: List[str] = Query(
         default=["Anfield"],
         description="One or more venue names (e.g. 'Anfield', 'Old Trafford')",
@@ -113,8 +122,11 @@ async def get_many_by_name(
     response_model=List[VenuesRead],
     summary="Get venues by city.",
     description="Retrieve venue records matching city (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit("10/minute")
 async def get_many_by_city(
+    request: Request,
     cities: List[str] = Query(
         default=["London"],
         description="One or more cities (e.g. 'London', 'Manchester')",
@@ -138,8 +150,11 @@ async def get_many_by_city(
     response_model=List[VenuesReadWithCountry],
     summary="Get venues by country names.",
     description="Retrieve venue records associated with specified country names.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_many_by_country(
+    request: Request,
     countries: List[str] = Query(
         default=["England"],
         description="One or more country names (e.g. 'England', 'Spain')",
@@ -163,8 +178,11 @@ async def get_many_by_country(
     response_model=List[VenuesRead],
     summary="Get venues by ids.",
     description="Retrieve venue records matching ids.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_many(
+    request: Request,
     ids: List[int] = Query(description="One or more venue ids."),
     service: VenuesService = Depends(get_service),
 ) -> List[VenuesRead]:
@@ -185,8 +203,11 @@ async def get_many(
     response_model=VenuesRead,
     summary="Get venue by id.",
     description="Retrieve venue record matching id.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_one(
+    request: Request,
     venue_id: int,
     service: VenuesService = Depends(get_service),
 ) -> VenuesRead:
@@ -207,8 +228,11 @@ async def get_one(
     response_model=PageResponse[VenuesRead],
     summary="Retrieve venues using dynamic filters.",
     description="Retrieve a paginated list of venues matching dynamic defined filter criteria.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def search(
+    request: Request,
     filters: List[FilterItem] = Body(...),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1_000),
@@ -237,6 +261,7 @@ async def search(
     response_model=VenuesRead,
     summary="Update venue by ID.",
     description="Apply partial updates to an existing venue record.",
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
 async def update(
     venue_id: int,
@@ -262,6 +287,7 @@ async def update(
     response_model=DeleteConfirmation,
     summary="Delete venue by ID",
     description="Delete an existing venue identified by its unique ID.",
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
 async def delete(
     venue_id: int,

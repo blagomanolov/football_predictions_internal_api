@@ -56,18 +56,34 @@ def get_token_data(
 def require_permissions(required_permissions: List[str]) -> Callable:
     """Dependency factory to check if user has all required permissions."""
     async def _permission_dependency(
+        request: Request,
         token: TokenData = Depends(get_token_data),
         db: AsyncSession = Depends(get_privilege_session),
     ):
         repo = EmployeeRepository(db)
         user_perms = await repo.get_permissions(token.role)
         
-        for perm in required_permissions:
-            if perm not in user_perms:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, 
-                    detail=f"Permission '{perm}' required"
-                )
+        missing_permissions = [
+            permission 
+            for permission in required_permissions
+            if permission not in user_perms
+        ]
+        if missing_permissions:
+            structlog.get_logger("security").warning(
+                "authorization_denied",
+                reason="missing_permission",
+                user=token.sub,
+                role=token.role,
+                required_permissions=required_permissions,
+                missing_permissions=missing_permissions,
+                method=request.method,
+                path=request.url.path,
+                reuqest_id=getattr(request.state, 'request_id', '-'),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission '{missing_permissions}' required",
+            )
         return token
     return _permission_dependency
 

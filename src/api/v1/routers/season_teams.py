@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from middleware.rate_limit import limiter
+from core.auth import require_permissions
 from database.dependencies import get_db_session
 from repositories.season_teams import SeasonTeamsRepository
 from schemas.season_teams import (
@@ -40,7 +41,8 @@ def get_service(
     "/",
     response_model=SeasonTeamsRead,
     summary="Create season_team record.",
-    description="Create season_team record."
+    description="Create season_team record.",
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
 @limiter.limit("10/minute")
 async def create(
@@ -58,7 +60,7 @@ async def create(
     """
     return await service.create(data)
 
-@router.get("/", response_model=PageResponse[SeasonTeamsRead])
+@router.get("/", response_model=PageResponse[SeasonTeamsRead], dependencies=[Depends(require_permissions(['data:read']))])
 @limiter.limit("10/minute")
 async def list_all(
     request: Request,
@@ -84,7 +86,8 @@ async def list_all(
     description=(
         "Retrieve season_teams records associated with specified country names, including the season name, "
         "team name."
-    )
+    ),
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
 @limiter.limit("10/minute")
 async def get_many_by_country(
@@ -110,7 +113,8 @@ async def get_many_by_country(
     "/bulk",
     response_model=List[SeasonTeamsRead],
     summary="Get season_teams by ids.",
-    description="Retrieve season_teams records matching ids."
+    description="Retrieve season_teams records matching ids.",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
 @limiter.limit("10/minute")
 async def get_many(
@@ -133,6 +137,7 @@ async def get_many(
     response_model=SeasonTeamsRead,
     summary="Get season_team by id.",
     description="Retrieve season_team record matching id.",
+    dependencies=[Depends(require_permissions(["data:read"]))]
 )
 @limiter.limit("10/minute")
 async def get_one(
@@ -160,7 +165,8 @@ async def get_one(
             "filter critria across multiple model fields. Support multiple"
             "comperison operations, configurable sorting (asc or desc)"
             "and pagination using skip and limit parameters."
-        )
+        ),
+        dependencies=[Depends(require_permissions(["data:read"]))]
 )
 @limiter.limit("10/minute")
 async def search(
@@ -193,7 +199,8 @@ async def search(
         "Update an existing season_team identified by its unique ID. "
         "Accepts the fields to be updated and applies the changes to the "
         "corresponding season_team records."
-    )
+    ),
+    dependencies=[Depends(require_permissions(["data:write"]))]
 )
 @limiter.limit("10/minute")
 async def update(
@@ -221,7 +228,8 @@ async def update(
     description = (
             "Delete an existing season_team identified by its unique ID. "
             "Permanently removes the season_team record from the database."
-    )
+    ),
+    dependencies=[Depends(require_permissions(["data:write"]))]
 )
 @limiter.limit("10/minute")
 async def delete(

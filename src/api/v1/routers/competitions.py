@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from middleware.rate_limit import limiter
+from core.auth import require_permissions
 from database.dependencies import get_db_session
 from repositories.competitions import CompetitionsRepository
 from schemas.competitions import (
@@ -40,7 +42,8 @@ def get_service(
         "/", 
         response_model=CompetitionsRead,
         summary="Create competition record.",
-        description="Create competition record."
+        description="Create competition record.",
+        dependencies=[Depends(require_permissions(["data:write"]))]
 )
 async def create(
     data: CompetitionsCreate, 
@@ -55,8 +58,10 @@ async def create(
     """
     return await service.create(data)
 
-@router.get("/", response_model=PageResponse[CompetitionsRead])
+@router.get("/", response_model=PageResponse[CompetitionsRead], dependencies=[Depends(require_permissions(["data:read"]))])
+@limiter.limit("10/minute")
 async def list_all(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1_000),
     service: CompetitionsService = Depends(get_service),
@@ -78,8 +83,11 @@ async def list_all(
     response_model=List[CompetitionsRead],
     summary="Get competition by name.",
     description="Retrieve competition records matching name (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit("10/minute")
 async def get_many_by_name(
+    request: Request,
     names: List[str] = Query(
         default=["Premier League"],
         description="One or more name (e.g. 'Premier League')",
@@ -101,9 +109,12 @@ async def get_many_by_name(
     "/by-code",
     response_model=List[CompetitionsRead],
     summary="Get competition by code",
-    description="Retrieve competition records matching code (exact match)."
+    description="Retrieve competition records matching code (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_many_by_code(
+    request: Request,
     codes: List[str] = Query(
         default=["EPL"],
         description="One or more code (e.g. 'EPL')",
@@ -126,8 +137,11 @@ async def get_many_by_code(
     response_model=List[CompetitionsRead],
     summary="Get competition by type.",
     description="Retrieve competition records matching type (exact match).",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_many_by_type(
+    request: Request,
     types: List[str] = Query(
         default=["domestic_league"],
         description="One or more type (e.g. 'domestic_league', 'domestic_cup')"
@@ -149,9 +163,12 @@ async def get_many_by_type(
     "/by-country",
     response_model=List[CompetitionsReadWithCountry],
     summary="Get competitions by country names.",
-    description="Retrieve competition records associated with specified country names, including the country name."
+    description="Retrieve competition records associated with specified country names, including the country name.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_many_by_country(
+    request: Request,
     countries: List[str] = Query(
         default=["England"],
         description="One or more countries (e.g. 'England', 'Germany')"
@@ -174,8 +191,11 @@ async def get_many_by_country(
     response_model=List[CompetitionsRead],
     summary="Get competitions by ids.",
     description="Retrieve competition records matching ids.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_many(
+    request: Request,
     ids: List[int] = Query(description="One or more competition ids."),
     service: CompetitionsService = Depends(get_service),
 ) -> List[CompetitionsRead]:
@@ -194,8 +214,11 @@ async def get_many(
     response_model=CompetitionsRead,
     summary="Get competition by id.",
     description="Retrieve competition record matching id.",
+    dependencies=[Depends(require_permissions(['data:read']))]
 )
+@limiter.limit('10/minute')
 async def get_one(
+    request: Request,
     competition_id: int,
     service: CompetitionsService = Depends(get_service),
 ) -> CompetitionsRead:
@@ -219,9 +242,12 @@ async def get_one(
             "filter critria across multiple model fields. Support multiple"
             "comperison operations, configurable sorting (asc or desc)"
             "and pagination using skip and limit parameters."
-        )
+        ),
+        dependencies=[Depends(require_permissions('data:read'))]
 )
+@limiter.limit('10/minute')
 async def search(
+    request: Request,
     filters: List[FilterItem] = Body(...),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1_000),
@@ -251,7 +277,8 @@ async def search(
         "Update an existing competition identified by its unique ID. "
         "Accepts the fields to be updated and applies the changes to the "
         "corresponding competition records."
-    )
+    ),
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
 async def update(
     competition_id: int,
@@ -277,7 +304,8 @@ async def update(
     description = (
         "Delete an existing competition identified by its unique ID. "
         "Permanently removes the competition record from the database."
-    )
+    ),
+    dependencies=[Depends(require_permissions(['data:write']))]
 )
 async def delete(
     competition_id: int,
