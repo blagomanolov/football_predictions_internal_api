@@ -1,253 +1,229 @@
 # Football Internal API
 
-A high-performance, asynchronous RESTful API service built with **FastAPI**, **SQLAlchemy 2.0 (async)**, and **Pydantic v2** designed to power football analytics, internal tooling, and match prediction pipelines.
+An asynchronous FastAPI service for football reference data, including countries,
+competitions, seasons, venues, teams, season-team registrations, and players.
+It uses SQLAlchemy 2 async sessions with MySQL and a separate privilege database
+for authentication and authorization.
 
-The service provides a centralized data-access layer for core football reference data—including **Countries**, **Competitions**, **Seasons**, **Venues**, **Teams**, **Season-Team Rosters**, and **Players**—backed by a relational **MySQL 8.0+** engine.
+## Features
 
----
+- FastAPI + Pydantic v2 + SQLAlchemy 2 async
+- Separate MySQL data and access-control databases
+- JWT bearer authentication and role-based data permissions
+- Per-resource `data:read` and `data:write` permission checks
+- SlowAPI rate limiting
+- Structured request/authorization logging
+- `X-Request-ID` propagation
+- Liveness and database-ready health probes
+- CORS, trusted-host, GZip, and security-header middleware
+- JSON logs outside local development
+- Optional Vault credential loading for the football database
 
-## Key Features & Architecture (2026 Standards)
+## Runtime layout
 
-- **Strict Layered Separation**:
-  - `Routers` (`api/v1/routers/`): Thin HTTP endpoints handling serialization, rate limiting, and parameter parsing.
-  - `Services` (`services/`): Business logic, multi-entity orchestration, and domain errors.
-  - `Repositories` (`repositories/`): Data access with type-safe SQLAlchemy queries and dynamic query builders.
-  - `Models` (`models/`): Modern SQLAlchemy 2.0 declarative models (`Mapped[...]`) with explicit relationship cascades and foreign keys.
-  - `Schemas` (`schemas/`): Pydantic v2 DTOs with input validation, output filtering, and unified pagination envelopes.
-- **Enterprise Security & Auth**:
-  - Centralized `/api/v1` route grouping secured by constant-time `X-API-Key` authentication (`secrets.compare_digest`).
-  - CORS middleware with configurable origin whitelists.
-  - Security headers middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, etc.).
-  - Trusted host enforcement via `TrustedHostMiddleware`.
-- **API Defense & Performance**:
-  - **Rate Limiting**: Distributed/in-memory token bucket rate limiting via SlowAPI (`SlowAPIASGIMiddleware`), with automatic 429 JSON responses and `@limiter.exempt` probes.
-  - **GZip Compression**: Automatic response payload compression for responses exceeding 1 KB.
-  - **Dynamic Connection Pooling**: Configurable database pool (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_RECYCLE`, `DB_POOL_TIMEOUT`).
-  - **Vault Secrets Integration**: Optional dynamic credential lookup via HashiCorp Vault (`hvac`).
-- **Cloud-Native Observability**:
-  - **Distributed Request Correlation**: Automatic `X-Request-ID` generation, context-var injection, and response echo.
-  - **Structured Logging**: Unified JSON logs in production (`structlog` / stdlib) and formatted human-readable output in local/dev.
-  - **Dual-Probe Health Monitoring**:
-    - `GET /health/live`: Fast liveness probe that verifies process health without touching the database.
-    - `GET /health/ready`: Readiness probe verifying real-time database connectivity (`SELECT 1`).
-    - `GET /health`: Backward-compatible alias.
-- **Resilient Error Architecture**:
-  - Automatic database constraint mapping (`handle_integrity_error` converts MySQL 1062 duplicate keys and 1451/1452 foreign key errors into clean `409 ConflictError`).
-  - Standardized JSON error response contract (`code`, `message`, `details`, `request_id`).
+```text
+src/
+  main.py                  # ASGI application and middleware stack
+  api/v1/                   # API route modules
+  services/                 # Business logic
+  repositories/             # SQLAlchemy data access
+  models/                   # Football data models
+  models_priv/              # Access-control models
+  repositories_priv/        # Access-control queries
+  schemas/                  # Pydantic request/response models
+  core/auth.py              # JWT and permission dependencies
+  database/                 # Football database engine
+  database_priv/            # Privilege database engine
+  middleware/               # Request logging, rate limits, security headers
+  configs/                  # Environment settings and logging
+docs/
+  ARCHITECTURE.md
+  OPERATIONS.md
+```
 
----
+## Authentication
 
-## Tech Stack
+1. Log in with an employee username:
 
-| Component | Technology |
+```bash
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"your_username"}'
+```
+
+2. Use the returned token as a bearer token:
+
+```http
+Authorization: Bearer <access_token>
+X-Request-ID: optional-correlation-id
+```
+
+The login endpoint verifies that the employee exists and has an active role.
+It does not verify a password: the current implementation is intended for an
+internal/demo environment and should be hardened before external use.
+
+Resource routes require one of these permissions:
+
+| Operation | Permission |
 |---|---|
-| **Framework** | FastAPI 0.115+ / Starlette |
-| **Server** | Uvicorn (ASGI) |
-| **Database & ORM** | MySQL 8.0+, SQLAlchemy 2.0+ (async), `aiomysql` |
-| **Validation & DTOs** | Pydantic v2 & `pydantic-settings` |
-| **Secrets Management** | HashiCorp Vault (`hvac`) / `.env` environment cascades |
-| **Rate Limiter** | SlowAPI (Token bucket) |
-| **Logging** | Structlog + Python stdlib logging (`dictConfig`) |
+| Reads | `data:read` |
+| Creates, updates, deletes | `data:write` |
 
----
+Roles and permission codes are resolved from the separate privilege database.
 
-## Project Structure
+## API routes
 
-```
-football_api/
-├── .env                         # Environment selector (CONFIG_ENV=local|dev|prod)
-├── .env.example                 # Environment configuration template
-├── .env.local                   # Local machine secrets (git-ignored)
-├── requirements.txt             # Locked Python dependencies
-├── README.md                    # Service documentation & API guide
-└── src/
-    ├── main.py                  # ASGI app initialization, lifespan, middleware stack
-    ├── api/
-    │   └── v1/
-    │       ├── __init__.py      # Versioned /api/v1 router with global security
-    │       └── routers/         # Resource routers
-    │           ├── countries.py
-    │           ├── competitions.py
-    │           ├── seasons.py
-    │           ├── venues.py
-    │           ├── teams.py
-    │           ├── season_teams.py
-    │           └── players.py
-    ├── services/                # Business logic and integrity error handling
-    ├── repositories/            # SQLAlchemy generic BaseRepository & specialized queries
-    ├── models/                  # SQLAlchemy mapped entities & relationships
-    ├── schemas/                 # Pydantic models (DTOs, FilterItem, PageResponse, etc.)
-    ├── database/                # Engine lifecycle, sessionmaker, dependencies
-    ├── configs/                 # Pydantic Settings, constants, Vault client, logging
-    ├── core/                    # Domain exceptions, DB error handlers, API security
-    └── middleware/              # Request logging, rate limiting, security headers
+Routers are currently mounted directly under their resource prefixes:
+
+| Resource | Prefix | Main operations |
+|---|---|---|
+| Auth | `/auth` | `POST /auth/login` |
+| Countries | `/countries` | Create, list, filter, search, update, delete |
+| Competitions | `/competitions` | Create, list, filter, search, update, delete |
+| Seasons | `/seasons` | Create, list, filter, search, update, delete |
+| Venues | `/venues` | Create, list, filter, search, update, delete |
+| Teams | `/teams` | Create, list, filter, search, update, delete |
+| Season teams | `/season-teams` | Create, list, filter, update, delete |
+| Players | `/players` | Create, list, filter, search, update, delete |
+
+The generated Swagger UI lists each route, query parameter, and request schema.
+
+Example authenticated requests:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:8000/countries/?skip=0&limit=100"
+
+curl -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -X POST http://127.0.0.1:8000/countries/ \
+  -d '{"name":"England","code_alpha2":"EN","code_alpha3":"ENG","confederation":"UEFA"}'
 ```
 
----
+## Health and documentation
 
-## Domain Entities & Endpoints
+| Endpoint | Purpose |
+|---|---|
+| `/health/live` | Process liveness; no database call |
+| `/health/ready` | Football database readiness via `SELECT 1` |
+| `/health` | Alias for `/health/ready` |
+| `/docs` | Swagger UI, except in production |
+| `/redoc` | ReDoc, except in production |
+| `/openapi.json` | OpenAPI schema, except in production |
 
-All business resources are versioned under `/api/v1` and protected with the `X-API-Key` header:
+Health and documentation behavior are controlled by `CONFIG_ENV`.
 
-### 1. Countries (`/api/v1/countries`)
-- `POST /` — Create country.
-- `GET /` — Paginated list (`PageResponse[CountriesRead]`).
-- `GET /by-name` — Look up by country name.
-- `GET /by-code2` & `GET /by-code3` — Look up by ISO alpha-2 or alpha-3 codes.
-- `GET /by-confederation` — Filter by continental confederation (UEFA, CONMEBOL, etc.).
-- `GET /bulk` — Retrieve multiple countries by IDs.
-- `GET /{country_id}` — Single country lookup.
-- `POST /search` — Multi-operator dynamic filtering (`eq`, `in`, `like`, `gt`, `lt`, etc.).
-- `PATCH /{country_id}` — Partial updates.
-- `DELETE /{country_id}` — Deletion.
+## Configuration
 
-### 2. Competitions (`/api/v1/competitions`)
-- `POST /` — Create competition.
-- `GET /` — Paginated list (`PageResponse[CompetitionsRead]`).
-- `GET /by-name` & `GET /by-code` — Query by competition name or acronym (e.g., `EPL`, `UCL`).
-- `GET /by-type` — Filter by competition format (`domestic_league`, `domestic_cup`, `continental_cup`, `international`).
-- `GET /by-country` — Enriched results returning competition with its associated `country_name`.
-- `GET /{competition_id}` & `POST /search` & `PATCH` & `DELETE`.
+Copy the environment template and replace placeholders:
 
-### 3. Seasons (`/api/v1/seasons`)
-- `POST /` — Create season record with unique `(competition_id, name)` constraint.
-- `GET /` — Paginated list (`PageResponse[SeasonsRead]`).
-- `GET /by-name` — Lookup by season name (e.g., `2024/2025`).
-- `GET /by-country` — Enriched results returning `(Seasons, competition_name, country_name)`.
-- `GET /{season_id}` & `POST /search` & `PATCH` & `DELETE`.
-
-### 4. Venues / Stadiums (`/api/v1/venues`)
-- `POST /` — Create venue with pitch dimensions, surface type, and geo-coordinates.
-- `GET /` — Paginated list (`PageResponse[VenuesRead]`).
-- `GET /by-name` & `GET /by-city` — Filter by stadium name or city.
-- `GET /by-country` — Enriched lookup returning venue with country name.
-- `GET /{venue_id}` & `POST /search` & `PATCH` & `DELETE`.
-
-### 5. Teams (`/api/v1/teams`)
-- `POST /` — Create team with country and home venue links.
-- `GET /` — Paginated list (`PageResponse[TeamsRead]`).
-- `GET /by-name` & `GET /by-code` — Filter by team name or code (e.g. `ARS`, `MCI`).
-- `GET /by-country` & `GET /by-venue` — Lookups enriched with parent relation details.
-- `GET /{team_id}` & `POST /search` & `PATCH` & `DELETE`.
-
-### 6. Season Teams / Rosters (`/api/v1/season-teams`)
-- `POST /` — Register a team into a competition season.
-- `GET /` — Paginated roster list.
-- `GET /by-team` — Enriched retrieval returning season names and team names.
-- `GET /{season_team_id}` & `DELETE /{season_team_id}`.
-
-### 7. Players (`/api/v1/players`)
-- `POST /` — Create player with detailed positions, preferred foot, and market values. **Supports specifying nationality either by `nationality_country_id` or by human-readable `country_name`**.
-- `GET /` — Paginated list (`PageResponse[PlayersRead]`).
-- `GET /by-name` — Query by common name (e.g. `Rodri`, `Saka`).
-- `GET /by-country` — Filter players by nationality name.
-- `GET /{player_id}` & `POST /search` & `PATCH` & `DELETE`.
-
----
-
-## Standardized Responses
-
-### 1. Paginated Envelope (`PageResponse[T]`)
-Used by all listing and dynamic search endpoints:
-```json
-{
-  "items": [
-    {
-      "id": 1,
-      "name": "England",
-      "code_alpha2": "EN",
-      "code_alpha3": "ENG",
-      "confederation": "UEFA",
-      "flag_url": null,
-      "created_at": "2026-10-18T09:30:00"
-    }
-  ],
-  "total": 54,
-  "skip": 0,
-  "limit": 1
-}
-```
-
-### 2. Error Response Contract (`ErrorResponse`)
-Returned consistently for all 4xx and 5xx exceptions:
-```json
-{
-  "code": "conflict",
-  "message": "Country already exists with this code_alpha2.",
-  "details": {
-    "duplicate_key": "code_alpha2",
-    "value": "EN"
-  },
-  "request_id": "4a18d184-b258-45e3-9990-23a57960fc03"
-}
-```
-
----
-
-## Local Setup & Quickstart
-
-### 1. Prerequisites
-- Python 3.11+ (Python 3.12 recommended)
-- MySQL 8.0+ running with the `football_predictions` schema loaded
-
-### 2. Configure Environment
-Create `.env.local` using `.env.example` as a reference:
 ```bash
 cp .env.example .env.local
 ```
 
-Ensure `.env` selects local mode:
+Set `.env` to select an environment file:
+
 ```env
 CONFIG_ENV=local
 ```
 
-Key variables in `.env.local`:
+Required settings include:
+
 ```env
-CONFIG_ENV=local
 APP_NAME=football-internal-api
 VERSION=1.0.0
-API_KEY=your-secret-internal-key-here
+JWT_SECRET=change-this-secret
 
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=football
-DB_PASSWORD=YourStrongPasswordHere!
+DB_PASSWORD=change-this-password
 DB_NAME=football_predictions
+
+PRV_DB_HOST=localhost
+PRV_DB_PORT=3306
+PRV_DB_USER=access_reader
+PRV_DB_PASSWORD=change-this-password
+PRV_DB_NAME=access_control
+```
+
+Additional supported settings include:
+
+```env
+LOG_LEVEL=INFO
+DEBUG=false
+ALLOWED_ORIGINS=http://localhost:3000
+TRUSTED_HOSTS=*
+RATE_LIMIT_DEFAULT=200/minute
+RATE_LIMIT_STORAGE_URI=memory://
 DB_POOL_SIZE=10
 DB_MAX_OVERFLOW=20
 DB_POOL_RECYCLE=1800
-
-LOG_LEVEL=DEBUG
-DEBUG=true
+DB_POOL_TIMEOUT=30
+DB_CONNECT_TIMEOUT=10
+API_KEY=legacy-placeholder
+API_KEY_NAME=X-API-Key
 ```
 
-### 3. Install Dependencies
+`ALLOWED_ORIGINS` and `TRUSTED_HOSTS` are parsed according to Pydantic settings
+list parsing. In environment files, JSON-style lists such as
+`["http://localhost:3000"]` are the safest portable form.
+
+## Local setup
+
+Prerequisites:
+
+- Python 3.11+
+- MySQL 8.0+ databases for football data and access control
+- Required privilege tables/views for login and permission lookup
+
+Install and run:
+
 ```bash
-source /path/to/virtualenv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 4. Run the Service
-From `football_api/src`:
-```bash
+cd src
 python main.py
 ```
-Or via Uvicorn directly:
+
+For direct Uvicorn startup:
+
 ```bash
+cd src
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
----
+Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
-## API Documentation & Testing
+## Responses
 
-- **Interactive Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-  - Click **Authorize 🔓** in the top-right corner.
-  - Enter your `API_KEY` (e.g. `your-secret-internal-key-here`) and click **Authorize**.
-  - All subsequent "Try it out" requests will automatically include the required `X-API-Key` header.
-- **Alternative ReDoc UI**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
-- **Raw OpenAPI Schema**: [http://127.0.0.1:8000/openapi.json](http://127.0.0.1:8000/openapi.json)
-- **Liveness Probe**: [http://127.0.0.1:8000/health/live](http://127.0.0.1:8000/health/live)
-- **Readiness Probe**: [http://127.0.0.1:8000/health/ready](http://127.0.0.1:8000/health/ready)
+Most list endpoints return:
 
-*(Note: In production environments where `CONFIG_ENV=prod`, docs endpoints are automatically disabled for security.)*
+```json
+{
+  "items": [],
+  "total": 0,
+  "skip": 0,
+  "limit": 100
+}
+```
+
+Application and HTTP errors are converted to the project error contract:
+
+```json
+{
+  "code": "not_found",
+  "message": "Resource not found.",
+  "details": null,
+  "request_id": "uuid"
+}
+```
+
+The request ID is accepted from `X-Request-ID`, generated when omitted, and
+returned in both the response headers and structured logs.
+
+## Further documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Operations](docs/OPERATIONS.md)

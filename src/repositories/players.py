@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from models.players import Players
 from models.countries import Countries
@@ -38,4 +38,31 @@ class PlayersRepository(BaseRepository[Players]):
             .where(Countries.name.in_(country_names))
         )
         result = await self.session.execute(stmt)
-        return result.all
+        return result.all()
+
+    async def list_by_market_value_range(
+        self, *, min_eur: int | None, max_eur: int | None, skip: int, limit:int
+    ) -> tuple[List[Players], int]:
+        conditions: list = []
+
+        if min_eur is not None:
+            conditions.append(Players.market_value_eur >= min_eur)
+        if max_eur is not None:
+            conditions.append(Players.market_value_eur <= max_eur)
+
+        count_stmt = (
+            select(func.count())
+            .select_from(Players)
+            .where(*conditions)
+        )
+        total = (await self.session.execute(count_stmt)).scalar_one()
+
+        stmt = (
+            select(Players)
+            .where(*conditions)
+            .order_by(Players.market_value_eur.asc(), Players.id.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all()), total
